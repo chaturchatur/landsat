@@ -1,0 +1,80 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env/
+.venv/
+env/
+ENV/
+
+# IDE-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# Python packaging and build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+
+# Testing and coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# MacOS-specific files
+.DS_Store
+
+# PyCharm-specific files
+.idea/
+*.iml
+# VS Code-specific files
+.vscode/
+*.code-workspace
+
+# Local development files
+local_settings.py
+settings_local.py
+
+# Large data files
+*.csv
+*.h5
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# ML model files
+*.pt
+*.pth
+*.onnx
+*.tflite
+
+# Uploaded files (if applicable)
+uploads/
+data/
+
+# Custom directories/files to ignore
+temp/
+tmp/
