@@ -1,62 +1,55 @@
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
-# Standard imports
+
 from tqdm.notebook import tqdm
 import requests
 import json
 import os
 import time
-
 import pandas as pd
 import numpy as np
 from PIL import Image
-
-# Geospatial processing packages
 import geopandas as gpd
 import geojson
-
 import shapely
 import rasterio as rio
 from rasterio.plot import show
 import rasterio.mask
 from shapely.geometry import box
-
-# Mapping and plotting libraries
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import ee
 import eeconvert as eec
 import geemap
-# NEW
 from geemap.foliumap import Map as emap
 import folium
 import urllib.request
 import zipfile
 import tempfile
 import shutil
-
-# Deep learning libraries
 import torch
 from torchvision import datasets, models, transforms
 
-
+# earthengine initalization -> 
 try:
     ee.Initialize(project="land-sat-458621")
-    print("Earth Engine initialized successfully!")
-    print("\nCurrent Earth Engine user info:")
+    print("earthengine initialized successfully!")
 except Exception as e:
-    print("Please authenticate Earth Engine first by running:")
-    print("earthengine authenticate")
+    print("earthengine authenticate") 
+    # download google cloud SDK, and run "gcloud auth" in CLI
+    # run "earthengine authenticate" in CLI
 
+# set country & administrative level ()
 ISO = 'IND' # "DEU" is the ISO code for Germany
 ADM = 'ADM3' # Equivalent to administrative districts
 
-# Query geoBoundaries
+# download country geoBoundaries
 r = requests.get("https://www.geoboundaries.org/api/current/gbOpen/{}/{}/".format(ISO, ADM))
 r.raise_for_status()
 data = r.json()
 print(type(data), data)
 
+# handle API response -> if dict, turn into list for iteration
 if isinstance(data, dict):
     entries = [data]
 elif isinstance(data, list):
@@ -64,42 +57,41 @@ elif isinstance(data, list):
 else:
     raise ValueError(f"Unexpected response type: {type(data)}")
 
-dl_path = entries[0]['gjDownloadURL']
+dl_path = entries[0]['gjDownloadURL'] #download url for geoJSON file
 
-# Save the result as a GeoJSON
+# Save the result as a geoJSON
 filename = 'geoboundary.geojson'
 geoboundary = requests.get(dl_path).json()
 with open(filename, 'w') as file:
    geojson.dump(geoboundary, file)
 
-# Read data using GeoPandas
+# read geoJSON data using geopandas
 geoboundary = gpd.read_file(filename)
 print("Data dimensions: {}".format(geoboundary.shape))
-vasant_kunj = geoboundary[geoboundary['shapeName'].str.contains('Vasant Kunj', case=False)]
-geoboundary.sample(10)
-
-shape_name = 'Sarita Vihar'
+geoboundary.sample(10) # show 10 sample areas
+shape_name = 'Sarita Vihar' # find specific area
 fig, ax = plt.subplots(1, figsize=(10,10))
-geoboundary[geoboundary.shapeName == shape_name].plot('shapeName', legend=True, ax=ax);
+geoboundary[geoboundary.shapeName == shape_name].plot('shapeName', legend=True, ax=ax)
 
+# to get satellite colour (3 band RGB) image for a region
 def generate_image(
-    region,
-    product='COPERNICUS/S2',
-    min_date='2018-01-01',
-    max_date='2020-01-01',
+    region,  # geojson?
+    product='COPERNICUS/S2', # sentinel-2
+    min_date='2018-01-01', # start date
+    max_date='2020-01-01', # end date
     range_min=0,
     range_max=2000,
-    cloud_pct=10
+    cloud_pct=10 # cloud coverage percentage
 ):
-    # Generate median aggregated composite
+
+    # gets collection of S2 images & filters them
     image = ee.ImageCollection(product)\
         .filterBounds(region)\
         .filterDate(str(min_date), str(max_date))\
         .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", cloud_pct))\
-        .median()
+        .median() # combines all filtered images into single image -> median value for each pixel
 
-    # Get RGB bands
-    image = image.visualize(bands=['B4', 'B3', 'B2'], min=range_min, max=range_max)
+    image = image.visualize(bands=['B4', 'B3', 'B2'], min=range_min, max=range_max)  #get RGB bands
     # Note that the max value of the RGB bands is set to 65535
     # because the bands of Sentinel-2 are 16-bit integers
     # with a full numerical range of [0, 65535] (max is 2^16 - 1);
@@ -108,12 +100,12 @@ def generate_image(
 
     return image.clip(region)
 
-region = geoboundary.loc[geoboundary['shapeName'] == shape_name]
-region = region.to_crs("EPSG:3857")
-centroid = region.geometry.centroid.iloc[0].coords[0]
-region_fc = eec.gdfToFc(region)
+region = geoboundary.loc[geoboundary['shapeName'] == shape_name] # selects area of interest
+region = region.to_crs("EPSG:3857") #???
+centroid = region.geometry.centroid.iloc[0].coords[0] # finds center of region (for map display)
+region_fc = eec.gdfToFc(region) # coverts to google ee usable format
 
-# 3. Build a Sentinel-2 Surface Reflectance RGB composite for 2021
+# get satellite image for AOI & year 
 image = generate_image(
     region_fc,
     product='COPERNICUS/S2',
@@ -122,10 +114,12 @@ image = generate_image(
     cloud_pct=10,
 )
 
+# create interactive map & display region
 m = emap(center=(centroid[1], centroid[0]), zoom=10)
 m.addLayer(image,{}, 'Sentinel-2')
 m.addLayerControl()
-m  # renders the interactive map in the notebook
+m.save("sentinel2_map.html")  # renders the interactive map webpage
+
 
 def export_image(image, filename, region, folder):
     try:
