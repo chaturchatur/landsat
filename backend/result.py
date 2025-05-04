@@ -30,7 +30,7 @@ import shutil
 import torch
 from torchvision import datasets, models, transforms
 
-# earthengine initalization -> 
+# earthengine initalization 
 try:
     ee.Initialize(project="land-sat-458621")
     print("earthengine initialized successfully!")
@@ -40,8 +40,8 @@ except Exception as e:
     # run "earthengine authenticate" in CLI
 
 # set country & administrative level ()
-ISO = 'IND' # "DEU" is the ISO code for Germany
-ADM = 'ADM3' # Equivalent to administrative districts
+ISO = 'IND' # "IND" is the ISO code for India
+ADM = 'ADM3' # equivalent to administrative districts
 
 # download country geoBoundaries
 r = requests.get("https://www.geoboundaries.org/api/current/gbOpen/{}/{}/".format(ISO, ADM))
@@ -122,165 +122,150 @@ m.save("sentinel2_map.html")  # renders the interactive map webpage
 
 
 def export_image(image, filename, region, folder):
+    
+    # convert GeoDataFrame to ee geometry
+    region_fc = geemap.gdf_to_ee(region) 
+    region_geometry = region_fc.geometry()
+
+    print(f'Exporting {filename}.tif to {folder}...')
+        
+    # create output directory if it doesn't exist
+    os.makedirs(folder, exist_ok=True)
+        
+    # set download parameters
+    params = {
+        'scale': 10, # pixel size
+        'region': region_geometry, # area
+        'crs': 'EPSG:4326', # coordinate system
+        'format': 'GEO_TIFF', # file type
+        'filePerBand': False # saving each band as a seperate file
+    }
+
+    # get download URL and download
     try:
-        # Initialize with your new project
-        ee.Initialize(project="land-sat-458621")
-        
-        # Convert GeoDataFrame to EE geometry
-        region_fc = geemap.gdf_to_ee(region)
-        region_geometry = region_fc.geometry()
-
-        print(f'Exporting {filename}.tif to {folder}...')
-        
-        # Create output directory if it doesn't exist
-        os.makedirs(folder, exist_ok=True)
-        
-        # Get download parameters
-        params = {
-            'scale': 10,
-            'region': region_geometry,
-            'crs': 'EPSG:4326',
-            'format': 'GEO_TIFF',
-            'filePerBand': False
-        }
-
-        # Get download URL and download
-        try:
-            url = image.getDownloadURL(params)
-            print(f"Downloading from URL: {url}")
+        url = image.getDownloadURL(params)
+        print(f"Downloading from URL: {url}")
             
-            # Download the file directly
-            output_path = os.path.join(folder, f"{filename}.tif")
-            urllib.request.urlretrieve(url, output_path)
-            print(f"Successfully saved to {output_path}")
+        # saving file in folder
+        output_path = os.path.join(folder, f"{filename}.tif")
+        urllib.request.urlretrieve(url, output_path)
+        print(f"Successfully saved to {output_path}")
 
-        except Exception as e:
-            print(f"Export failed: {str(e)}")
-            raise
-
-    except Exception as e:
-        print(f"Earth Engine initialization failed: {str(e)}")
-        print("Please make sure you have:")
-        print("1. Created a Google Cloud project")
-        print("2. Enabled the Earth Engine API")
-        print("3. Authenticated with Earth Engine")
+    except Exception as e: # error handling
+        print(f"Export failed: {str(e)}")
         raise
 
-    
 
-# Change this to your local directory
-cwd = './data/'  # Local data directory
-input_dir = os.path.join(cwd, 'input/')  # Create input subdirectory
-sample_predictions_dir = './sample_predictions/'  # Directory for predictions
+cwd = './data/'  # local data directory
 
-# Create necessary directories
+# create necessary directories
+input_dir = os.path.join(cwd, 'input/')  # create input subdirectory
+sample_predictions_dir = './sample_predictions/'  # directory for predictions
 os.makedirs(input_dir, exist_ok=True)
 os.makedirs(sample_predictions_dir, exist_ok=True)
 
-# File paths
-tif_file = os.path.join(input_dir, f'{shape_name}.tif')
+tif_file = os.path.join(input_dir, f'{shape_name}.tif') #tif input file path
+export_image(image, shape_name, region, input_dir) # export to input subdirectory
 
-# Export the image
-export_image(image, shape_name, region, input_dir)
-
-# Open image file using Rasterio
+# open image file using Rasterio
 image = rio.open(tif_file)
 boundary = geoboundary[geoboundary.shapeName == shape_name]
 
-# Plot image and corresponding boundary
+# plot image and corresponding boundary
 fig, ax = plt.subplots(figsize=(15,15))
 boundary.plot(facecolor="none", edgecolor='red', ax=ax)
-show(image, ax=ax);
+show(image, ax=ax) 
 
+# divides image into small tiles/patches
 def generate_tiles(image_file, output_file, area_str, size=64):
-    # Open the raster image using rasterio
+    #open the raster image using rasterio
     raster = rio.open(image_file)
     width, height = raster.shape
 
-    # Create a dictionary which will contain our 64 x 64 px polygon tiles
-    # Later we'll convert this dict into a GeoPandas DataFrame.
+    # create a dictionary which will contain 64x64 polygon tiles
     geo_dict = { 'id' : [], 'geometry' : []}
     index = 0
 
-    # Do a sliding window across the raster image
+    # do a sliding window across the raster image -> in steps of size (64x64)
     with tqdm(total=width*height) as pbar:
       for w in range(0, width, size):
           for h in range(0, height, size):
-              # Create a Window of your desired size
-              window = rio.windows.Window(h, w, size, size)
-              # Get the georeferenced window bounds
-              bbox = rio.windows.bounds(window, raster.transform)
-              # Create a shapely geometry from the bounding box
-              bbox = box(*bbox)
-
-              # Create a unique id for each geometry
-              uid = '{}-{}'.format(area_str.lower().replace(' ', '_'), index)
-
-              # Update dictionary
-              geo_dict['id'].append(uid)
+              window = rio.windows.Window(h, w, size, size) # create Window of your desired size
+              bbox = rio.windows.bounds(window, raster.transform) # # get georeferenced window bounds
+              bbox = box(*bbox) # turns coordinates into polygon object
+              
+              uid = '{}-{}'.format(area_str.lower().replace(' ', '_'), index) # create unique id for each geometry -> sarita_vihar-0
+              geo_dict['id'].append(uid) # update dictionary
               geo_dict['geometry'].append(bbox)
 
               index += 1
-              pbar.update(size*size)
+              pbar.update(size*size) # 
 
-    # Cast dictionary as a GeoPandas DataFrame
-    results = gpd.GeoDataFrame(pd.DataFrame(geo_dict))
-    # Set CRS to EPSG:4326
-    results.crs = {'init' :'epsg:4326'}
-    # Save file as GeoJSON
-    results.to_file(output_file, driver="GeoJSON")
+    results = gpd.GeoDataFrame(pd.DataFrame(geo_dict)) # convert dict to geopandas dataframe
+    results.crs = {'init' :'epsg:4326'} # set coordinate ref system -> standard latitude/longitude system (EPSG:4326)
+    results.to_file(output_file, driver="GeoJSON") # save file as GeoJSON
 
-    raster.close()
+    raster.close() # close image file
     return results
 
-output_file = input_dir+'{}.geojson'.format(shape_name)
-tiles = generate_tiles(tif_file, output_file, shape_name, size=64)
+output_file = input_dir+'{}.geojson'.format(shape_name) # file for tiles
+tiles = generate_tiles(tif_file, output_file, shape_name, size=64) # generates tiles 64x64
 print('Data dimensions: {}'.format(tiles.shape))
 tiles.head(3)
 
 image = rio.open(tif_file)
 fig, ax = plt.subplots(figsize=(15,15))
 tiles.plot(facecolor="none", edgecolor='red', ax=ax)
-show(image, ax=ax);
+show(image, ax=ax)
 
-# 1. Open your GeoTIFF
+
 image = rio.open(tif_file)
-
-# 2. Make sure both GeoDataFrames share the same CRS
-tiles = tiles.to_crs(boundary.crs)
-
-# 3. Drop any pre‐existing 'index_right' column to avoid name collisions
+tiles = tiles.to_crs(boundary.crs) # ensure tiles & boundary use same CRS (coordinate ref system)
 for df in (tiles, boundary):
-    if 'index_right' in df.columns:
+    if 'index_right' in df.columns: # removes right column to avoid errors in next job
         df.drop(columns=['index_right'], inplace=True)
 
-# 4. Perform the spatial join with the new `predicate` argument
+# spatial join with -> finds all tiles within boundary polygon 
 tiles_within = gpd.sjoin(tiles, boundary, how="inner", predicate="within")
 
-# 5. Plot the result
+# plot the tiles
 fig, ax = plt.subplots(figsize=(15, 15))
 tiles_within.plot(facecolor="none", edgecolor="red", ax=ax)
 show(image, ax=ax)
 
-def show_crop(image, shape, title=''):
-  with rio.open(image) as src:
-      out_image, out_transform = rio.mask.mask(src, shape, crop=True)
-      # Crop out black (zero) border
-      _, x_nonzero, y_nonzero = np.nonzero(out_image)
+def show_crop(image, shape, title='', save_path=None):
+    with rio.open(image) as src: # opens satellite image
+        out_image, out_transform = rio.mask.mask(src, shape, crop=True) #mask & crop image to shape
+        _, x_nonzero, y_nonzero = np.nonzero(out_image) # find non zero pixels -> pixels that have data
       
-      # Check if x_nonzero and y_nonzero are empty
-      if x_nonzero.size == 0 or y_nonzero.size == 0:
-          print("Warning: Tile does not intersect with valid image data.")
-          return # Skip this tile
-      out_image = out_image[
-        :,
-        np.min(x_nonzero):np.max(x_nonzero),
-        np.min(y_nonzero):np.max(y_nonzero)
-      ]
-      # Visualize image
-      show(out_image, title=title)
+      # check if x_nonzero and y_nonzero are empty
+        if x_nonzero.size == 0 or y_nonzero.size == 0:
+            print("Warning: Tile does not intersect with valid image data.")
+            return # skip this tile
+        out_image = out_image[
+            :,
+            np.min(x_nonzero):np.max(x_nonzero),
+            np.min(y_nonzero):np.max(y_nonzero)
+        ] # crop out any black border -> leaving only data
+        
+        # update metadata and save the cropped image
+        if save_path is not None:
+            out_meta = src.meta.copy()
+            out_meta.update({
+                "driver": "GTiff",
+                "height": out_image.shape[1],
+                "width":  out_image.shape[2],
+                "transform": out_transform
+            })
+            with rio.open(save_path, 'w', **out_meta) as dest:
+                dest.write(out_image)
+            print(f"Saved cropped image to {save_path}")
+        
+        # visualize the cropped image
+        # show(out_image, title=title)
+        return out_image
 
-show_crop(tif_file, [tiles.iloc[5]['geometry']])
+# show_crop(tif_file, [tiles.iloc[5]['geometry']]) # takes 5th image, crops image to just the tile, displays it
 
 # LULC Classes
 classes = [
@@ -317,80 +302,46 @@ transform = transforms.Compose([
 ])
 
 def predict_crop(image_path, shapes, classes, model, show=False):
-    """Generates model prediction using trained model, but skips zero‐size crops."""
     for shape in shapes:
-        with rio.open(image_path) as src:
-            # 1. Crop source image using the polygon shape
-            out_image, out_transform = rio.mask.mask(src, [shape], crop=True)
-
-            # 2. Find non-zero pixels
-            _, x_nonzero, y_nonzero = np.nonzero(out_image)
-            if x_nonzero.size == 0 or y_nonzero.size == 0:
-                # nothing intersected this tile — skip it
-                return None
-
-            # 3. Trim out zero‐border around the crop
-            out_image = out_image[
-                :,
-                x_nonzero.min(): x_nonzero.max() + 1,
-                y_nonzero.min(): y_nonzero.max() + 1
-            ]
-
-            # 4. Update metadata for the cropped patch
-            out_meta = src.meta.copy()
-            out_meta.update({
-                "driver": "GTiff",
-                "height": out_image.shape[1],
-                "width":  out_image.shape[2],
-                "transform": out_transform
-            })
-
-            # 5. Write to a temporary file
-            temp_tif = '/tmp/temp_crop.tif'
-            with rio.open(temp_tif, 'w', **out_meta) as dest:
-                dest.write(out_image)
-
-        # 6. Run through your PyTorch model
+        temp_tif = '/tmp/temp_crop.tif'
+        show_crop(image_path, [shape], save_path=temp_tif)
+        
+        # run through your torchgeo model
         img = Image.open(temp_tif)
-        inp = transform(img)               # your existing transform()
-        out = model(inp.unsqueeze(0))
-        _, pred = torch.max(out, 1)
-        label = classes[int(pred[0])]
+        inp = transform(img) # apply existing transform()
+        out = model(inp.unsqueeze(0)) # runs image through model 
+        #unsqueeze(0) -> adds a new dimension to a tensor: [channels, height, weight] -> [batch_size, channels, height, width]
+        _, pred = torch.max(out, 1) # finds predicted class -> max probability
+        label = classes[int(pred[0])] # gets predicted label class
 
         if show:
             img.show(title=label)
 
         return label
-
     return None
 
-# Commence model prediction
-labels = [] # Store predictions
+# commence model prediction
+labels = [] # list to store predictions
 for index in tqdm(range(len(tiles)), total=len(tiles)):
   label = predict_crop(tif_file, [tiles.iloc[index]['geometry']], classes, model)
   labels.append(label)
 tiles['pred'] = labels
 
-# Save predictions
+# save predictions
 filepath = os.path.join(sample_predictions_dir, f"{shape_name}_preds.geojson")
 tiles.to_file(filepath, driver="GeoJSON")
 tiles.head(3)
 
-# Read predictions
-filepath = os.path.join(sample_predictions_dir, f"{shape_name}_preds.geojson")
-tiles = gpd.read_file(filepath)
+filepath = os.path.join(sample_predictions_dir, f"{shape_name}_preds.geojson") # read predictions 
+tiles = gpd.read_file(filepath) 
+tiles = tiles.to_crs("EPSG:4326") # Convert to WGS84 (EPSG:4326) for folium compatibility (for better mapping)
+tiles.geometry = tiles.geometry.make_valid() # ensure geometries are valid
 
-# Convert to WGS84 (EPSG:4326) for Folium compatibility
-tiles = tiles.to_crs("EPSG:4326")
-
-# Ensure geometries are valid
-tiles.geometry = tiles.geometry.make_valid()
-
-# Add debug checks
+# debug checks
 print("Unique predictions:", tiles['pred'].unique())
 print("Prediction counts:\n", tiles['pred'].value_counts())
 
-# Color mapping with fallback for missing classes
+# color mapping for classes
 colors = {
     'AnnualCrop': 'lightgreen',
     'Forest': 'forestgreen',
@@ -404,24 +355,20 @@ colors = {
     'SeaLake': 'blue'
 }
 
-# Create color column with black as default
-tiles['color'] = tiles['pred'].map(colors).fillna('#000000')
+tiles['color'] = tiles['pred'].map(colors).fillna('#000000') # create color column with black as default
+tiles['color'] = tiles['color'].apply(lambda x: mcolors.to_hex(x) if isinstance(x, str) else x) # convert color names to hex (if using named colors)
 
-# Convert color names to hex (if using named colors)
-tiles['color'] = tiles['color'].apply(lambda x: mcolors.to_hex(x) if isinstance(x, str) else x)
-
-# Get valid centroid in WGS84
 region = region.to_crs("EPSG:4326")
-centroid = region.geometry.centroid.iloc[0].coords[0]
+centroid = region.geometry.centroid.iloc[0].coords[0] # get valid centroid in WGS84
 
-# Create map with proper zoom
+# create folium map with proper zoom
 m = folium.Map(
-    location=[centroid[1], centroid[0]],  # Folium expects [lat, lon]
+    location=[centroid[1], centroid[0]],  # folium expects [lat, lon]
     zoom_start=12,
-    tiles='CartoDB positron'  # More reliable default
+    tiles='CartoDB positron'  # more reliable default
 )
 
-# Add Google Satellite (if available)
+# add google satellite (if available)
 folium.TileLayer(
     tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
     attr='Google',
@@ -430,27 +377,24 @@ folium.TileLayer(
     control=True
 ).add_to(m)
 
-# Create feature group for predictions
+# create feature group for predictions
 fg = folium.FeatureGroup(name='Land Cover', show=True)
 
-# Add geometries with proper style binding
+# add each tile to the map with its colour
 for _, row in tiles.iterrows():
     folium.GeoJson(
         row.geometry,
-        style_function=lambda x, color=row['color']: {
-            'fillColor': color,
-            'color': 'black',
-            'weight': 0.5,
-            'fillOpacity': 0.7
+        style_function=lambda x, color=row['color']: { 
+            'fillColor': color, # colour
+            'color': 'black', # outline
+            'weight': 0.5, # thickness
+            'fillOpacity': 0.7 # opacity
         }
     ).add_to(fg)
+fg.add_to(m) # add feature group to map
+folium.LayerControl().add_to(m) # add layer control and legend
 
-fg.add_to(m)
-
-# Add layer control and legend
-folium.LayerControl().add_to(m)
-
-# Create legend
+# create legend
 legend_html = '''
 <div style="position: fixed; 
      bottom: 50px; left: 50px; width: 180px; 
@@ -465,11 +409,7 @@ for label, color in colors.items():
 legend_html += '</div>'
 m.get_root().html.add_child(folium.Element(legend_html))
 
-# Save and display
+# save map 
 output_map = os.path.join(sample_predictions_dir, f"{shape_name}_map.html")
 m.save(output_map)
 print(f"Map saved to: {output_map}")
-
-# Open in default browser
-import webbrowser
-webbrowser.open(output_map)
