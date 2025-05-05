@@ -164,8 +164,14 @@ def main():
     )
     model.load_state_dict(weights.get_state_dict(progress=True), strict=False) # loads pretrained weights into model
 
+    # for windows
     model = model.to(device) # move model to gpu
     torchsummary.summary(model, (3, 224, 224))
+    
+    # # for macs
+    # model_cpu = model.to('cpu') # move to cpu for summary
+    # torchsummary.summary(model, (3, 224, 224))
+    # model = model_cpu.to(device) # move back to mps for training
 
     # specify number of epochs & learning rate
     n_epochs = 10
@@ -336,7 +342,7 @@ def main():
     ax.set_title("Predicted class: {}\nActual Class: {}".format(pred, label))
 
     # retrieves sample from path
-    image_path = '.data/EuroSAT/Forest/Forest_2.jpg'
+    image_path = './data/EuroSAT/Forest/Forest_2.jpg'
     image = Image.open(image_path)
 
     # transform image
