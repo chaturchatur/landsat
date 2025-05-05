@@ -18,6 +18,7 @@ import torchsummary
 from torch.utils import data
 from torchgeo.models import ResNet50_Weights
 from torchvision import datasets, models, transforms
+from torch.cuda.amp import autocast, GradScaler
 
 # custom dataset class for eurosat
 class EuroSAT(data.Dataset):
@@ -110,18 +111,18 @@ def main():
     test_data = data.Subset(test_data, indices=indices[train_split+val_split:])
     print("Train/val/test sizes: {}/{}/{}".format(len(train_data), len(val_data), len(test_data)))
 
-    num_workers = 2
-    batch_size = 16
+    num_workers = os.cpu_count()//2 # or 2/4
+    batch_size = 16 # can try 32, 64 -> just don't run out of gpu vram 
 
     # DataLoader -> batches, shuffle, loads (in parallel) & creates an iterative object of the data
     train_loader = data.DataLoader(
-        train_data, batch_size=batch_size, num_workers=num_workers, shuffle=True
+        train_data, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=True # pin memory only for nvidia gpus, ignored on mac -> allocates batches in gpu accessible memory -> faster data transfer 
     )
     val_loader = data.DataLoader(
-        val_data, batch_size=batch_size, num_workers=num_workers, shuffle=False
+        val_data, batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=True
     )
     test_loader = data.DataLoader(
-        test_data, batch_size=batch_size, num_workers=num_workers, shuffle=False
+        test_data, batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=True
     )
     
     # visualize a batch of the dataset in 8x8 grid
@@ -182,22 +183,40 @@ def main():
         running_loss = 0.0
         running_total_correct = 0.0
 
+        # mixed precision training for windows -> using both float16 + float32 during training -> float16 is faster since its half the memory
+        # using float16 + float32 (faster) => almost equal to same accuracy of 100% float32
+        scaler = GradScaler()
         for i, (inputs, labels) in enumerate(tqdm(dataloader)): # loop through data in batches
             # move data to gpu
-            inputs = inputs.to(device)  # images
-            labels = labels.to(device) # correct labels
+            inputs, labels = inputs.to(device), labels.to(device)
 
             optimizer.zero_grad() # clear out old gradients from last batch
-            outputs = model(inputs) # forward pass -> new predictions
-            loss = criterion(outputs, labels) # calculate loss -> comparing w correct labels
-            loss.backward() # backward pass -> compute gradient of loss for each parameter
-            optimizer.step() # update model parameters based on gradient
+            with autocast():
+                outputs = model(inputs) # forward pass -> new predictions
+                loss = criterion(outputs, labels) # calculate loss -> comparing w correct labels
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             _, preds = torch.max(outputs, 1) # takes max probability -> predicted class for each image
+
+        # for mac since mixed precision training is not supported
+        # for i, (inputs, labels) in enumerate(tqdm(dataloader)): # loop through data in batches
+        #     # move data to gpu
+        #     inputs = inputs.to(device)  # images
+        #     labels = labels.to(device) # correct labels
+
+        #     optimizer.zero_grad() # clear out old gradients from last batch
+        #     outputs = model(inputs) # forward pass -> new predictions
+        #     loss = criterion(outputs, labels) # calculate loss -> comparing w correct labels
+        #     loss.backward() # backward pass -> compute gradient of loss for each parameter
+        #     optimizer.step() # update model parameters based on gradient
+
+        #     _, preds = torch.max(outputs, 1) # takes max probability -> predicted class for each image
             
-            # add up loss & correct predictions
-            running_loss += loss.item() * inputs.size(0) 
-            running_total_correct += torch.sum(preds == labels)
+        #     # add up loss & correct predictions
+        #     running_loss += loss.item() * inputs.size(0) 
+        #     running_total_correct += torch.sum(preds == labels)
 
         # average loss & accuracy
         epoch_loss = running_loss / len(dataloader.dataset)
@@ -277,7 +296,7 @@ def main():
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
         
-    model_file = os.path.join(model_dir, 'best_model.pth') # model itself
+    model_file = os.path.join(model_dir, 'best_model_torchgeo.pth') # model itself
 
     def save_model(best_model, model_file): # save model
         torch.save(best_model.state_dict(), model_file)
