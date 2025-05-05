@@ -304,7 +304,8 @@ transform = transforms.Compose([
 def predict_crop(image_path, shapes, classes, model, show=False):
     inference_times = [] # track inference time of each grid
     for shape in shapes:
-        temp_tif = '/tmp/temp_crop.tif'
+        temp_dir = tempfile.gettempdir()
+        temp_tif = os.path.join(temp_dir, "temp_crop.tif")
         show_crop(image_path, [shape], save_path=temp_tif)
         
         # run through your torchgeo model

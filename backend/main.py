@@ -45,6 +45,9 @@ def main():
 
     # use gpu if enabled
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # print(torch.backends.mps.is_available())
+    # print(torch.backends.mps.is_built())
+    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu") # for mac 
     print("Device: {}".format(device))
 
     # print the gpu name
@@ -181,7 +184,7 @@ def main():
 
         for i, (inputs, labels) in enumerate(tqdm(dataloader)): # loop through data in batches
             # move data to gpu
-            inputs = inputs.to(device) # images
+            inputs = inputs.to(device)  # images
             labels = labels.to(device) # correct labels
 
             optimizer.zero_grad() # clear out old gradients from last batch
@@ -239,19 +242,27 @@ def main():
         best_loss = np.inf # +inf
         best_model = None
 
-        start_time = time.time()
+        epoch_times = []
         for epoch in range(n_epochs): # loop over epochs (full pass)
-            print("Epoch {}".format(epoch+1))
+            start_epoch = time.time()
             train(model, train_loader, criterion, optimizer) # train mode on training data 
             val_loss, _ = evaluate(model, val_loader, criterion) # evaluate model on validation data
+            end_epoch = time.time()
+            epoch_time = end_epoch - start_epoch
+            epoch_times.append(epoch_time)
+            print(f"Epoch {epoch+1} time: {epoch_time:.2f} seconds")
 
             if val_loss < best_loss: #check if best model
                 best_loss = val_loss
                 best_model = model
 
-        end_time = time.time()
-        print(f"Total training time for {n_epochs} epochs: {end_time - start_time:.2f} seconds")
-        print(f"Average time per epoch: {(end_time - start_time)/n_epochs:.2f} seconds")
+        df = pd.DataFrame({
+            "epoch": list(range(1, len(epoch_times) + 1)),
+            "epoch_time_sec": epoch_times
+        })
+        df.to_csv("epoch_times.csv", index=False)
+        print("Saved epoch times to epoch_times.csv")
+
         return best_model
 
     # best_model = fit(model, train_loader, val_loader, n_epochs, lr, criterion, optimizer)
@@ -273,11 +284,13 @@ def main():
         print('Model successfully saved to {}.'.format(model_file))
     save_model(best_model, model_file)
 
-    def load_model(model_file): # load model
-        model = models.resnet50(weights=models.ResNet50_Weights.SENTINEL2_RGB_MOCO) # creates resnet50 w/ sentinel-2 weights
-        model.fc = torch.nn.Linear(model.fc.in_features, 10) # adjusts final/output layer for number of classes
-        model.load_state_dict(torch.load(model_file)) # loads saved model parameters
-        model.eval() # sets model to evaluation mode 
+    def load_model(model_file):
+        weights = ResNet50_Weights.SENTINEL2_RGB_MOCO
+        model = timm.create_model(
+            "resnet50", in_chans=weights.meta["in_chans"], num_classes=10
+        )
+        model.load_state_dict(torch.load(model_file))
+        model.eval()
         print('Model file {} successfully loaded.'.format(model_file))
         return model
     model = load_model(model_file)
