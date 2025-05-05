@@ -2,6 +2,7 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context # ssl to download the data set
 
 import os
+import time
 import random
 import multiprocessing
 from tqdm import tqdm
@@ -25,12 +26,12 @@ class EuroSAT(data.Dataset):
         self.transform = transform
 
     def __getitem__(self, index):
-        # Apply image transformations
+        # apply image transformations
         if self.transform:
             x = self.transform(self.dataset[index][0])
         else:
             x = self.dataset[index][0]
-        # Get class label
+        # get class label
         y = self.dataset[index][1]
         return x, y
 
@@ -238,6 +239,7 @@ def main():
         best_loss = np.inf # +inf
         best_model = None
 
+        start_time = time.time()
         for epoch in range(n_epochs): # loop over epochs (full pass)
             print("Epoch {}".format(epoch+1))
             train(model, train_loader, criterion, optimizer) # train mode on training data 
@@ -247,6 +249,9 @@ def main():
                 best_loss = val_loss
                 best_model = model
 
+        end_time = time.time()
+        print(f"Total training time for {n_epochs} epochs: {end_time - start_time:.2f} seconds")
+        print(f"Average time per epoch: {(end_time - start_time)/n_epochs:.2f} seconds")
         return best_model
 
     # best_model = fit(model, train_loader, val_loader, n_epochs, lr, criterion, optimizer)
@@ -299,7 +304,7 @@ def main():
     ax.set_title("Predicted class: {}\nActual Class: {}".format(pred, label))
 
     # retrieves sample from path
-    image_path = './EuroSAT/Forest/Forest_2.jpg'
+    image_path = '.data/EuroSAT/Forest/Forest_2.jpg'
     image = Image.open(image_path)
 
     # transform image

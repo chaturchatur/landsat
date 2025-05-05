@@ -302,6 +302,7 @@ transform = transforms.Compose([
 ])
 
 def predict_crop(image_path, shapes, classes, model, show=False):
+    inference_times = [] # track inference time of each grid
     for shape in shapes:
         temp_tif = '/tmp/temp_crop.tif'
         show_crop(image_path, [shape], save_path=temp_tif)
@@ -309,23 +310,42 @@ def predict_crop(image_path, shapes, classes, model, show=False):
         # run through your torchgeo model
         img = Image.open(temp_tif)
         inp = transform(img) # apply existing transform()
+        
+        start_time = time.time() # measure inference time
         out = model(inp.unsqueeze(0)) # runs image through model 
-        #unsqueeze(0) -> adds a new dimension to a tensor: [channels, height, weight] -> [batch_size, channels, height, width]
+        # unsqueeze(0) -> adds a new dimension to a tensor: [channels, height, weight] -> [batch_size, channels, height, width]
+        inference_time = time.time() - start_time
+        inference_times.append(inference_time)
+        
+       
         _, pred = torch.max(out, 1) # finds predicted class -> max probability
         label = classes[int(pred[0])] # gets predicted label class
 
         if show:
             img.show(title=label)
 
-        return label
-    return None
+        return label, inference_time
+    return None, None
 
 # commence model prediction
 labels = [] # list to store predictions
+inference_times = [] # list to store inference times
+total_start_time = time.time()
+
 for index in tqdm(range(len(tiles)), total=len(tiles)):
-  label = predict_crop(tif_file, [tiles.iloc[index]['geometry']], classes, model)
-  labels.append(label)
+    label, inference_time = predict_crop(tif_file, [tiles.iloc[index]['geometry']], classes, model)
+    labels.append(label)
+    inference_times.append(inference_time)
+
+total_time = time.time() - total_start_time
+avg_inference_time = sum(inference_times) / len(inference_times) if inference_times else 0
+
+print(f"total processing time: {total_time:.2f} seconds")
+print(f"average inference time per image: {avg_inference_time*1000:.2f} ms")
+print(f"images per second: {len(tiles)/total_time:.2f}")
+
 tiles['pred'] = labels
+tiles['inference_time'] = inference_times
 
 # save predictions
 filepath = os.path.join(sample_predictions_dir, f"{shape_name}_preds.geojson")
