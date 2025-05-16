@@ -68,6 +68,74 @@ ee.Initialize(project='your-project-id')
 
 ---
 
+## Pulling the Docker Image from Docker Hub
+
+You can use the pre-built Docker image without building it yourself:
+
+```bash
+docker pull chaturx3/landsat-app-simple
+```
+
+---
+
+## OS Support and Device Configuration
+
+This project supports Mac (Apple Silicon/Intel), Windows, and Linux. You may need to comment or uncomment certain code blocks in `main.py` depending on your operating system and hardware:
+
+- **For Mac (MPS/CPU):**
+
+  - Use the code block labeled `# for macs` (default in the script):
+    ```python
+    model_cpu = model.to('cpu') # move to cpu for summary
+    torchsummary.summary(model, (3, 224, 224))
+    model = model_cpu.to(device) # move back to mps for training
+    ```
+  - Use the training loop under `# for mac since mixed precision training is not supported`.
+
+- **For Windows (CUDA):**
+
+  - Uncomment the code block labeled `# for windows`:
+    ```python
+    model = model.to(device) # move model to gpu
+    torchsummary.summary(model, (3, 224, 224))
+    ```
+  - Uncomment the mixed precision training loop under `# mixed precision training for windows` and comment out the Mac-specific training loop.
+
+- **For Linux (CUDA/CPU):**
+  - Use the Windows (CUDA) code if you have an NVIDIA GPU, or the Mac/CPU code if you do not.
+
+**Instructions:**
+
+- Open `backend/main.py`.
+- Comment or uncomment the relevant code blocks according to your OS and hardware.
+- Only one device/training loop block should be active at a time.
+
+---
+
+## Usage
+
+### Run the Complete Pipeline (Download Data, Train, and Predict)
+
+After pulling the image, simply run:
+
+```bash
+docker run -it chaturx3/landsat-app-simple:latest
+```
+
+This will execute the full pipeline: download the data, train the model, and run predictions, all inside the container.
+
+> **Note:** No volume mounts are needed. All code, data, and models are included in the image.
+
+### (Optional) Get an Interactive Shell
+
+If you want to open a shell inside the container for debugging or exploration:
+
+```bash
+docker run -it chaturx3/landsat-app-simple:latest /bin/bash
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -107,40 +175,6 @@ docker build -t landsat-app .
 python -m venv venv
 source venv/bin/activate  # On Windows use: venv\Scripts\activate
 pip install -r backend/requirements.txt
-```
-
----
-
-## Usage
-
-### Running the Training Script (Docker)
-
-```bash
-docker run -it \
-  -v "$(pwd)/backend/data:/app/data" \
-  -v "$(pwd)/backend/models:/app/models" \
-  landsat-app main
-```
-
-### Running the Results Script (Docker)
-
-```bash
-docker run -it \
-  -v "$(pwd)/backend/data:/app/data" \
-  -v "$(pwd)/backend/models:/app/models" \
-  -v "$(pwd)/backend/sample_predictions:/app/sample_predictions" \
-  landsat-app result
-```
-
-> **Note:** The `-v` flags mount your local data, models, and sample_predictions directories into the Docker container so results and models are saved on your machine.
-
-### Getting an Interactive Shell (Optional)
-
-```bash
-docker run -it \
-  -v "$(pwd)/backend/data:/app/data" \
-  -v "$(pwd)/backend/models:/app/models" \
-  landsat-app /bin/bash
 ```
 
 ---

@@ -1,7 +1,6 @@
 # Use Python 3.9 as base image
 FROM python:3.9-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -16,32 +15,17 @@ RUN apt-get update && apt-get install -y \
 ENV CPLUS_INCLUDE_PATH=/usr/include/gdal
 ENV C_INCLUDE_PATH=/usr/include/gdal
 
-# Copy requirements first to leverage Docker cache
+# Copy requirements and install Python dependencies
 COPY backend/requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
+# Copy all backend code, data, and models into the image
 COPY backend/ .
-
-# Create necessary directories
-RUN mkdir -p uploads data models sample_predictions
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DISPLAY=:0
 ENV MPLBACKEND=Agg
 
-# Create an entrypoint script
-RUN echo '#!/bin/bash\nif [ "$1" = "shell" ]; then\n  /bin/bash\nelse\n  python "$1".py\nfi' > /entrypoint.sh \
-    && chmod +x /entrypoint.sh
-
-# Set the entrypoint
-ENTRYPOINT ["/entrypoint.sh"]
-
-# Default command (can be overridden)
-CMD ["main"]
-
-# Expose port if needed (uncomment if your app uses a specific port)
-# EXPOSE 8000 
+# Default command: run download_data.py, then main.py, then result.py
+CMD ["/bin/bash", "-c", "python download_data.py && python main.py && python result.py"]

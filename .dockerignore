@@ -15,18 +15,18 @@ ENV/
 .vscode/
 .idea/
 
-# Data and model files (these should be mounted as volumes)
-data/
-models/
-uploads/
-sample_predictions/
+# Data and model files (these should NOT be ignored for a self-contained image)
+# data/
+# models/
+# uploads/
+# sample_predictions/
 
-# Large files
-*.geojson
-*.tif
-*.tiff
-*.nc
-*.hdf5
+# Large files (allow .geojson, .tif, etc. if needed in the image)
+# *.geojson
+# *.tif
+# *.tiff
+# *.nc
+# *.hdf5
 
 # Logs
 *.log 
