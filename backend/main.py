@@ -45,10 +45,10 @@ def main():
     np.random.seed(SEED)
 
     # use gpu if enabled
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # print(torch.backends.mps.is_available())
-    # print(torch.backends.mps.is_built())
-    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu") # for mac 
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(torch.backends.mps.is_available())
+    print(torch.backends.mps.is_built())
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu") # for mac 
     print("Device: {}".format(device))
 
     # print the gpu name
@@ -165,13 +165,13 @@ def main():
     model.load_state_dict(weights.get_state_dict(progress=True), strict=False) # loads pretrained weights into model
 
     # for windows
-    model = model.to(device) # move model to gpu
-    torchsummary.summary(model, (3, 224, 224))
-    
-    # # for macs
-    # model_cpu = model.to('cpu') # move to cpu for summary
+    # model = model.to(device) # move model to gpu
     # torchsummary.summary(model, (3, 224, 224))
-    # model = model_cpu.to(device) # move back to mps for training
+    
+    # for macs
+    model_cpu = model.to('cpu') # move to cpu for summary
+    torchsummary.summary(model, (3, 224, 224))
+    model = model_cpu.to(device) # move back to mps for training
 
     # specify number of epochs & learning rate
     n_epochs = 10
@@ -191,38 +191,38 @@ def main():
 
         # mixed precision training for windows -> using both float16 + float32 during training -> float16 is faster since its half the memory
         # using float16 + float32 (faster) => almost equal to same accuracy of 100% float32
-        scaler = GradScaler()
-        for i, (inputs, labels) in enumerate(tqdm(dataloader)): # loop through data in batches
-            # move data to gpu
-            inputs, labels = inputs.to(device), labels.to(device)
-
-            optimizer.zero_grad() # clear out old gradients from last batch
-            with autocast():
-                outputs = model(inputs) # forward pass -> new predictions
-                loss = criterion(outputs, labels) # calculate loss -> comparing w correct labels
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-
-            _, preds = torch.max(outputs, 1) # takes max probability -> predicted class for each image
-
-        # for mac since mixed precision training is not supported
+        # scaler = GradScaler()
         # for i, (inputs, labels) in enumerate(tqdm(dataloader)): # loop through data in batches
         #     # move data to gpu
-        #     inputs = inputs.to(device)  # images
-        #     labels = labels.to(device) # correct labels
+        #     inputs, labels = inputs.to(device), labels.to(device)
 
         #     optimizer.zero_grad() # clear out old gradients from last batch
-        #     outputs = model(inputs) # forward pass -> new predictions
-        #     loss = criterion(outputs, labels) # calculate loss -> comparing w correct labels
-        #     loss.backward() # backward pass -> compute gradient of loss for each parameter
-        #     optimizer.step() # update model parameters based on gradient
+        #     with autocast():
+        #         outputs = model(inputs) # forward pass -> new predictions
+        #         loss = criterion(outputs, labels) # calculate loss -> comparing w correct labels
+        #     scaler.scale(loss).backward()
+        #     scaler.step(optimizer)
+        #     scaler.update()
 
         #     _, preds = torch.max(outputs, 1) # takes max probability -> predicted class for each image
+
+        # for mac since mixed precision training is not supported
+        for i, (inputs, labels) in enumerate(tqdm(dataloader)): # loop through data in batches
+            # move data to gpu
+            inputs = inputs.to(device)  # images
+            labels = labels.to(device) # correct labels
+
+            optimizer.zero_grad() # clear out old gradients from last batch
+            outputs = model(inputs) # forward pass -> new predictions
+            loss = criterion(outputs, labels) # calculate loss -> comparing w correct labels
+            loss.backward() # backward pass -> compute gradient of loss for each parameter
+            optimizer.step() # update model parameters based on gradient
+
+            _, preds = torch.max(outputs, 1) # takes max probability -> predicted class for each image
             
-        #     # add up loss & correct predictions
-        #     running_loss += loss.item() * inputs.size(0) 
-        #     running_total_correct += torch.sum(preds == labels)
+            # add up loss & correct predictions
+            running_loss += loss.item() * inputs.size(0) 
+            running_total_correct += torch.sum(preds == labels)
 
         # average loss & accuracy
         epoch_loss = running_loss / len(dataloader.dataset)

@@ -1,7 +1,7 @@
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 import requests
 import json
 import os
@@ -186,20 +186,23 @@ def generate_tiles(image_file, output_file, area_str, size=64):
     geo_dict = { 'id' : [], 'geometry' : []}
     index = 0
 
-    # do a sliding window across the raster image -> in steps of size (64x64)
-    with tqdm(total=width*height) as pbar:
-      for w in range(0, width, size):
-          for h in range(0, height, size):
-              window = rio.windows.Window(h, w, size, size) # create Window of your desired size
-              bbox = rio.windows.bounds(window, raster.transform) # # get georeferenced window bounds
-              bbox = box(*bbox) # turns coordinates into polygon object
-              
-              uid = '{}-{}'.format(area_str.lower().replace(' ', '_'), index) # create unique id for each geometry -> sarita_vihar-0
-              geo_dict['id'].append(uid) # update dictionary
-              geo_dict['geometry'].append(bbox)
+    # calculate total number of tiles
+    total_tiles = ((width + size - 1) // size) * ((height + size - 1) // size)
 
-              index += 1
-              pbar.update(size*size) # 
+    # do a sliding window across the raster image -> in steps of size (64x64)
+    with tqdm(total=total_tiles, desc="Generating tiles") as pbar:
+        for w in range(0, width, size):
+            for h in range(0, height, size):
+                window = rio.windows.Window(h, w, size, size) # create Window of your desired size
+                bbox = rio.windows.bounds(window, raster.transform) # get georeferenced window bounds
+                bbox = box(*bbox) # turns coordinates into polygon object
+                
+                uid = '{}-{}'.format(area_str.lower().replace(' ', '_'), index) # create unique id for each geometry -> sarita_vihar-0
+                geo_dict['id'].append(uid) # update dictionary
+                geo_dict['geometry'].append(bbox)
+
+                index += 1
+                pbar.update(1)  # Update by 1 for each tile processed
 
     results = gpd.GeoDataFrame(pd.DataFrame(geo_dict)) # convert dict to geopandas dataframe
     results.crs = {'init' :'epsg:4326'} # set coordinate ref system -> standard latitude/longitude system (EPSG:4326)
@@ -259,7 +262,6 @@ def show_crop(image, shape, title='', save_path=None):
             })
             with rio.open(save_path, 'w', **out_meta) as dest:
                 dest.write(out_image)
-            print(f"Saved cropped image to {save_path}")
         
         # visualize the cropped image
         # show(out_image, title=title)
